@@ -1,43 +1,22 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+# Environment variables
+.env
+.env.local
+.env.development
+.env.production
 
-# dependencies
-node_modules/
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
 
-# Expo
-.expo/
-dist/
-web-build/
-expo-env.d.ts
+# ML Models (ไฟล์ใหญ่มาก ไม่ควร push)
+*.pt
+*.pth
+*.onnx
+checkpoints/
 
-# Native
-.kotlin/
-*.orig.*
-*.jks
-*.p8
-*.p12
-*.key
-*.mobileprovision
-
-# Metro
-.metro-health-check*
-
-# debug
-npm-debug.*
-yarn-debug.*
-yarn-error.*
-
-# macOS
-.DS_Store
-*.pem
-
-# local env files
-.env*.local
-
-# typescript
-*.tsbuildinfo
-
-app-example
-
-# generated native folders
-/ios
-/android
+# Backend generated files (สร้างเองได้ ไม่ต้อง push)
+backend/audio/
+backend/outputs/
+backend/uploads/
+node_modules

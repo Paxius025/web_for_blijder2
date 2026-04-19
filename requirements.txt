@@ -1,0 +1,29 @@
+# FastAPI core
+fastapi
+uvicorn[standard]
+python-multipart
+python-dotenv
+
+# Database
+databases[asyncpg]
+sqlalchemy
+psycopg2-binary
+
+# Auth
+passlib[bcrypt]
+bcrypt
+
+# AI / Vision
+torch
+ultralytics
+opencv-python
+Pillow
+
+# TTS
+gtts
+
+# Gemini AI
+google-generativeai
+
+# Utils
+numpy
