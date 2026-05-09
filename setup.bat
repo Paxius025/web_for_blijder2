@@ -12,12 +12,14 @@ pip install "passlib[bcrypt]" bcrypt==4.0.1
 pip install torch ultralytics opencv-python Pillow numpy
 pip install gtts google-generativeai
 pip install timm
+cd ..
 echo Done Python dependencies!
 
 echo.
 echo [2/4] Installing Node dependencies...
-cd ..
+cd frontend
 npm install
+cd ..
 echo Done Node dependencies!
 
 echo.
@@ -51,6 +53,7 @@ echo  cd backend
 echo  uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 echo.
 echo  To run frontend:
+echo  cd frontend
 echo  npx expo start
 echo ================================
 pause
