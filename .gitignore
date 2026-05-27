@@ -33,9 +33,11 @@ backend/audio/
 
 # ─── Node / React Native / Expo ─────────────────────────────
 node_modules/
-.expo/
+frontend/.expo/
 dist/
 web-build/
+frontend/dist/
+frontend/web-build/
 *.jks
 *.p8
 *.p12
