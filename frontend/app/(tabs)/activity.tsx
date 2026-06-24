@@ -51,6 +51,7 @@ export default function ActivityScreen() {
   const [logs, setLogs] = useState<LogItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [playingId, setPlayingId] = useState<number | null>(null);
+  const [imgErrors, setImgErrors] = useState<Set<number>>(new Set());
   const soundRef = useRef<Audio.Sound | null>(null);
   const prevLogsRef = useRef<LogItem[]>([]);
 
@@ -109,7 +110,8 @@ export default function ActivityScreen() {
     await stopSound();
     try {
       const url = `${API_BASE_URL}/audio/${jobUuid}`;
-      console.log('🔊 กำลังส่งเสียงเตือนอัตโนมัติจาก:', url);
+      const check = await fetch(url, { method: 'HEAD' });
+      if (!check.ok) { setPlayingId(null); return; }
 
       const { sound } = await Audio.Sound.createAsync(
         { uri: url },
@@ -205,6 +207,7 @@ export default function ActivityScreen() {
           {logs.map((log) => {
             const { tag, tagColor, tagBg } = getTagStyle(log.status, highContrast);
             const imageUrl = log.image_path ? `${API_BASE_URL}/image/${log.job_uuid}` : null;
+            const imgFailed = imgErrors.has(log.log_id);
             const isPlaying = playingId === log.log_id;
 
             return (
@@ -214,11 +217,17 @@ export default function ActivityScreen() {
                 style={{ backgroundColor: cardBg, borderColor: cardBorder }}
               >
                 {/* Thumbnail */}
-                {imageUrl ? (
-                  <Image source={{ uri: imageUrl }} style={{ width: 90, height: 100 }} resizeMode="cover" />
+                {imageUrl && !imgFailed ? (
+                  <Image
+                    source={{ uri: imageUrl }}
+                    style={{ width: 90, height: 100 }}
+                    resizeMode="cover"
+                    onError={() => setImgErrors(prev => new Set([...prev, log.log_id]))}
+                  />
                 ) : (
                   <View style={{ width: 90, height: 100, backgroundColor: imgPlaceholderBg }} className="items-center justify-center">
                     <Ionicons name="image-outline" size={26} color={textMuted} />
+                    <Text style={{ color: textMuted, fontSize: 9, marginTop: 4 }}>ไม่พบภาพ</Text>
                   </View>
                 )}
 

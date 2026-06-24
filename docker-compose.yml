@@ -18,36 +18,5 @@ services:
       timeout: 5s
       retries: 10
 
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    ports:
-      - "8000:8000"
-    environment:
-      DATABASE_URL: postgresql://postgres:123456@db:5432/caregiver_system
-      GEMINI_API_KEY: ${GEMINI_API_KEY}
-    depends_on:
-      db:
-        condition: service_healthy
-    volumes:
-      - backend_uploads:/app/uploads
-      - backend_outputs:/app/outputs
-      - backend_audio:/app/audio
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    ports:
-      - "8081:8081"
-    depends_on:
-      - backend
-
 volumes:
   pg_data:
-  backend_uploads:
-  backend_outputs:
-  backend_audio:

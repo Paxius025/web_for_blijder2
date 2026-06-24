@@ -86,13 +86,15 @@ async def login(body: LoginRequest):
         if not user or not pwd_context.verify(body.password, user["password_hash"]):
             raise HTTPException(status_code=401, detail="Username หรือ Password ไม่ถูกต้อง")
         device = await database.fetch_one(
-        devices.select().where(devices.c.user_id == user["user_id"]))
+            devices.select().where(devices.c.user_id == user["user_id"])
+        )
         return {
             "user_id":           user["user_id"],
             "username":          user["username"],
             "full_name":         user["full_name"],
             "emergency_contact": user["emergency_contact"],
             "disability_details":user["disability_details"],
+            "device_serial":     device["device_serial"] if device else None,
         }
     except HTTPException:
         raise

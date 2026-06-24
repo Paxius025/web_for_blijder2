@@ -1,6 +1,6 @@
-import "../global.css";
-import { useEffect, useState } from "react";
 import { Stack, useRouter, useSegments } from "expo-router";
+import { useEffect, useRef, useState } from "react";
+import "../global.css";
 import { useAuthStore } from "../store/authStore";
 
 export default function RootLayout() {
@@ -8,15 +8,23 @@ export default function RootLayout() {
   const router = useRouter();
   const segments = useSegments();
   const [ready, setReady] = useState(false);
+  const hasInitialized = useRef(false);
 
-  // ✅ รอให้ Stack mount เสร็จก่อน
+  // ✅ Delay ready state to ensure Stack is fully mounted
   useEffect(() => {
-    setReady(true);
+    if (hasInitialized.current) return;
+    hasInitialized.current = true;
+
+    // Use microtask queue to ensure render is complete
+    queueMicrotask(() => {
+      setReady(true);
+    });
   }, []);
 
-  // ✅ พอ ready แล้วค่อย watch — ทำงานทั้ง native + web
+  // ✅ Only run auth check after Stack is mounted
   useEffect(() => {
     if (!ready) return;
+
     const inTabs = segments[0] === "(tabs)";
     if (!isAuthenticated && inTabs) {
       router.replace("/");

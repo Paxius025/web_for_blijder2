@@ -1,5 +1,5 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks, Request
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, Response
 from pydantic import BaseModel
 from threading import Lock
 import subprocess
@@ -110,32 +110,59 @@ def generate_enhanced_speech_text(detections, scene_analysis):
                 f"มี{label} {position} {number_to_thai(distance)} เมตร")
 
 def create_speech_audio(text: str, job_id: str) -> str:
-    temp_path  = None
-    final_path = None
+
+    final_path = AUDIO_DIR / f"{job_id}_speech.mp3"
+    temp_path  = AUDIO_DIR / f"{job_id}_temp.mp3"
     try:
-        temp_path  = AUDIO_DIR / f"{job_id}_temp.mp3"
-        final_path = AUDIO_DIR / f"{job_id}_speech.mp3"
-        tts = gTTS(text=text, lang='th', slow=False)
-        tts.save(str(temp_path))
+        import imageio_ffmpeg
+        ffmpeg_cmd = imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        ffmpeg_cmd = shutil.which("ffmpeg") or "ffmpeg"
 
-        ffmpeg_cmd = shutil.which("ffmpeg") or r"C:\ffmpeg\bin\ffmpeg.exe"
-        print(f"🔍 ffmpeg: {ffmpeg_cmd}")
+    # ลอง gTTS ก่อน (ต้องใช้ internet)
+    try:
+        import concurrent.futures
+        _gtts_ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        _gtts_fut = _gtts_ex.submit(lambda: gTTS(text=text, lang='th', slow=False).save(str(temp_path)))
+        try:
+            _gtts_fut.result(timeout=8)
+        finally:
+            _gtts_ex.shutdown(wait=False, cancel_futures=True)
 
-        result = subprocess.run([
-            ffmpeg_cmd, '-i', str(temp_path),
-            '-ar', '16000', '-ac', '1', '-b:a', '48k',
-            '-codec:a', 'libmp3lame', '-q:a', '5', '-y', str(final_path)
-        ], capture_output=True, text=True, timeout=30)
-        if temp_path and temp_path.exists():
-            temp_path.unlink()
-        if not final_path.exists():
-            raise Exception(f"FFmpeg failed: {result.stderr[:100]}")
-        return str(final_path)
+        if temp_path.exists() and temp_path.stat().st_size > 0:
+            subprocess.run([
+                ffmpeg_cmd, '-i', str(temp_path),
+                '-ar', '16000', '-ac', '1', '-b:a', '48k',
+                '-codec:a', 'libmp3lame', '-q:a', '5', '-y', str(final_path)
+            ], capture_output=True, timeout=20)
+            temp_path.unlink(missing_ok=True)
+            if final_path.exists() and final_path.stat().st_size > 0:
+                return str(final_path)
+    except Exception:
+        temp_path.unlink(missing_ok=True)
+
+    # Fallback: espeak (offline)
+    try:
+        espeak_cmd = shutil.which("espeak-ng") or shutil.which("espeak") or "/usr/bin/espeak-ng"
+        wav_path = AUDIO_DIR / f"{job_id}_temp.wav"
+        subprocess.run([
+            espeak_cmd, '-v', 'th', '-s', '150', '-w', str(wav_path), text
+        ], capture_output=True, timeout=10)
+        if wav_path.exists() and wav_path.stat().st_size > 0:
+            subprocess.run([
+                ffmpeg_cmd, '-i', str(wav_path),
+                '-ar', '16000', '-ac', '1', '-b:a', '48k',
+                '-codec:a', 'libmp3lame', '-q:a', '5', '-y', str(final_path)
+            ], capture_output=True, timeout=20)
+            wav_path.unlink(missing_ok=True)
+            if final_path.exists() and final_path.stat().st_size > 0:
+                print(f"🔈 espeak fallback OK: {job_id}")
+                return str(final_path)
     except Exception as e:
-        print(f"❌ Error creating speech: {e}")
-        if temp_path and temp_path.exists():
-            temp_path.unlink()
-        return ""
+        print(f"❌ espeak error: {e}")
+
+    print(f"❌ Audio generation failed: {job_id}")
+    return ""
 
 def estimate_distance_depthpro(depth_map, box, img_shape):
     x1, y1, x2, y2 = box
@@ -206,10 +233,14 @@ def analyze_scene_with_ai(image_path, detections):
                 Image.Resampling.BILINEAR
             )
         prompt = "จากภาพบอกทีที่ไหนคร่าวๆ เช่น ตลาดที่คนเยอะ ทางเดินที่มีหลุม ไม่พูดถึงสิ่งที่ชนไม่ได้ สั้นๆๆ เป็นภาษาไทย"
-        response = gemini_model.generate_content(
-            [prompt, image],
-            generation_config=genai.GenerationConfig(temperature=0.3, max_output_tokens=750)
-        )
+        import concurrent.futures as _cf
+        _ex = _cf.ThreadPoolExecutor(max_workers=1)
+        _fut = _ex.submit(gemini_model.generate_content, [prompt, image],
+                          generation_config=genai.GenerationConfig(temperature=0.3, max_output_tokens=750))
+        try:
+            response = _fut.result(timeout=10)
+        finally:
+            _ex.shutdown(wait=False, cancel_futures=True)
         if response.candidates and response.candidates[0].content.parts:
             text = response.candidates[0].content.parts[0].text.strip()
             text = re.sub(r'\*\*|\*|__?|```|#{1,6}', '', text)
@@ -480,7 +511,7 @@ def load_models():
         try:
             genai.configure(api_key=key)
             gemini_model = genai.GenerativeModel(
-                model_name="gemini-flash-latest",
+                model_name="gemini-2.5-flash",
                 generation_config=genai.GenerationConfig(temperature=0.4, max_output_tokens=500),
                 safety_settings=[{"category": c, "threshold": "BLOCK_NONE"} for c in [
                     "HARM_CATEGORY_HARASSMENT","HARM_CATEGORY_HATE_SPEECH",
@@ -572,8 +603,8 @@ async def get_analysis(job_id: str):
         "total_detections": len(job_status[job_id]["results"]),
     }
 
-@router.get("/audio/{job_id}")
-async def get_audio(job_id: str):
+@router.api_route("/audio/{job_id}", methods=["GET", "HEAD"])
+async def get_audio(job_id: str, request: Request):
     if job_id not in job_status:
         raise HTTPException(status_code=404, detail="Job not found")
     if job_status[job_id]["status"] != "completed":
@@ -581,17 +612,24 @@ async def get_audio(job_id: str):
     audio_path = job_status[job_id].get("audio_path")
     if not audio_path or not Path(audio_path).exists():
         raise HTTPException(status_code=404, detail="Audio not available")
+    if request.method == "HEAD":
+        return Response(headers={"Content-Length": str(Path(audio_path).stat().st_size),
+                                  "Content-Type": "audio/mpeg"})
     return FileResponse(audio_path, media_type="audio/mpeg",
                         headers={"Content-Length": str(Path(audio_path).stat().st_size)})
 
 @router.get("/image/{job_id}")
 async def get_image(job_id: str):
-    if job_id not in job_status:
-        raise HTTPException(status_code=404, detail="Job not found")
-    image_path = job_status[job_id].get("output_image")
-    if not image_path or not Path(image_path).exists():
-        raise HTTPException(status_code=404, detail="Image not found")
-    return FileResponse(image_path, media_type="image/jpeg")
+    # ตรวจใน in-memory ก่อน
+    if job_id in job_status:
+        p = job_status[job_id].get("output_image")
+        if p and Path(p).exists():
+            return FileResponse(p, media_type="image/jpeg")
+    # fallback: หาไฟล์ตรงจาก filesystem (กรณี backend restart)
+    for candidate in [OUTPUT_DIR / f"{job_id}.jpg", UPLOAD_DIR / f"{job_id}.jpg"]:
+        if candidate.exists():
+            return FileResponse(str(candidate), media_type="image/jpeg")
+    raise HTTPException(status_code=404, detail="Image not found")
 
 @router.get("/logs/{device_serial}")
 async def get_logs_by_device(device_serial: str, limit: int = 50):

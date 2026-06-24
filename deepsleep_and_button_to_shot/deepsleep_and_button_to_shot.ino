@@ -10,7 +10,7 @@ const char* WIFI_SSID = "J3K";
 const char* WIFI_PASS = "00000000";
 
 // ====== YOUR API URL ======
-const char* SERVER_HOST = "192.168.0.200";
+const char* SERVER_HOST = "172.20.10.4";
 const int   SERVER_PORT = 8000;
 String BASE_URL = "http://" + String(SERVER_HOST) + ":" + String(SERVER_PORT);
 
